@@ -1,12 +1,15 @@
+#if 0
+
 #include <cstdlib>
+#include <vector>
 
 #include <SDL3/SDL_stdinc.h>
-#include <vector>
 
 #include "core/particle_group.hpp"
 
 #include "core/particle.hpp"
 #include "core/simulation.hpp"
+#include "math/vector.hpp"
 #include "utilities/utils.hpp"
 
 
@@ -16,9 +19,8 @@ void ParticleGroup::UpdateParticle( Simulation &sim, std::size_t ind, ParticleGr
                 &otherInteraction = group.GetInteractions( )[ this->GetType( ) ];
 
     for( auto other = group.GetParticles( ).begin( ) + beginInd; other != group.GetParticles( ).end( ); other++ ) {
-        float distX = particle.position.x - other->position.x,
-              distY = particle.position.y - other->position.y;
-        float dist = SDL_sqrtf( distX * distX + distY * distY );
+        hin::Vector2 distVec = other->position - particle.position;
+        double dist = distVec.GetLength( );
 
         if( dist == 0.f )
             continue;
@@ -46,7 +48,7 @@ void ParticleGroup::Reset( Uint16 type, SDL_FColor color, float affectRange, std
     this->__interactions = interactions;
     this->Reserve( n );
     for( std::size_t i = 0; i < n; i++ ) {
-        this->__particles.emplace_back( SDL_FPoint{ hin::Rand( ) * width, hin::Rand( ) * height }, SDL_FPoint{ 0, 0 } );
+        this->__particles.emplace_back( type, hin::Vector2{ hin::Rand( ) * width, hin::Rand( ) * height }, hin::Vector2{ 0, 0 } );
     }
 }
 
@@ -80,3 +82,4 @@ std::vector<Particle> &ParticleGroup::GetParticles( ) {
     return this->__particles;
 }
 
+#endif

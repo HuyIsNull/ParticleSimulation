@@ -1,6 +1,7 @@
 #include <cstdlib>
 
 #include "utilities/utils.hpp"
+#include "math/vector.hpp"
 
 
 namespace hin {
@@ -10,9 +11,9 @@ namespace hin {
     }
 
 
-    bool PointCollidedRect( const SDL_FPoint &point, const SDL_FRect &rect ) {
-        return point.x >= rect.x && point.x <= rect.x + rect.w &&
-               point.y >= rect.y && point.y <= rect.y + rect.h;
+    bool PointCollidedRect( const Vector2f &point, const SDL_FRect &rect ) {
+        return point.GetX( ) >= rect.x && point.GetX( ) <= rect.x + rect.w &&
+               point.GetY( ) >= rect.y && point.GetY( ) <= rect.y + rect.h;
     }
 
 }

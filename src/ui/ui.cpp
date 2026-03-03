@@ -4,6 +4,7 @@
 #include <SDL3/SDL_render.h>
 
 #include "ui/ui.hpp"
+#include "math/vector.hpp"
 #include "utilities/utils.hpp"
 
 
@@ -19,13 +20,13 @@ namespace hin {
         switch( event.type ) {
             
             case SDL_EVENT_MOUSE_MOTION:
-                this->__isHovered = PointCollidedRect( SDL_FPoint{ event.motion.x, event.motion.y }, this->__dstRect );
+                this->__isHovered = PointCollidedRect( Vector2f{ event.motion.x, event.motion.y }, this->__dstRect );
             break;
 
 
             case SDL_EVENT_MOUSE_BUTTON_UP:
                 if( event.button.button == SDL_BUTTON_LEFT &&
-                        PointCollidedRect( SDL_FPoint{ event.button.x, event.button.y }, this->__dstRect ) &&
+                        PointCollidedRect( Vector2f{ event.button.x, event.button.y }, this->__dstRect ) &&
                         event.button.clicks == 1 ) {
 
                     this->__isClicked = true;

@@ -1,13 +1,23 @@
 #pragma once
 
-#include <SDL3/SDL_rect.h>
 #include <SDL3/SDL_stdinc.h>
+
+#include "math/vector.hpp"
 
 
 struct Particle {
 
-    SDL_FPoint position{ };
-    SDL_FPoint velocity{ };
+    Uint8 type{ };
+    hin::Vector2f position{ };
+    hin::Vector2f velocity{ };
+
+
+    constexpr operator hin::Vector2f( ) const {
+        return this->position;
+    }
+
+
+    bool operator==( const Particle &particle ) const = default;
 
 };
 

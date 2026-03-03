@@ -1,108 +1,189 @@
-#include "core/simulation.hpp"
-#include "core/program.hpp"
+#include <cstddef>
+#include <cstdlib>
+#include <fstream>
+
+#include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_stdinc.h>
-#include <cmath>
-#include <cstdlib>
+
+#include <nlohmann/json.hpp>
+
+#include "core/simulation.hpp"
+#include "core/particle.hpp"
+#include "core/particle_properties.hpp"
+#include "core/program.hpp"
+#include "ds/grid.hpp"
+#include "math/vector.hpp"
+#include "utilities/utils.hpp"
+
+
+static constexpr float AFFECT_RANGE = 75.f;
 
 
 void Simulation::Update( float delta ) {
-    Program &program = Program::GetInstance( );
-    SDL_Renderer *renderer = program.GetRenderer( );
+    SDL_Renderer *renderer = Program::GetInstance( ).GetRenderer( );
 
-    for( std::size_t i = 0; i < this->__groups.size( ); i++ ) {
-        ParticleGroup &group = this->__groups[ i ];
-        {
-            SDL_FColor &color = group.GetColor( );
-            SDL_SetRenderDrawColorFloat( renderer, color.r, color.g, color.b, color.a );
+    hin::Grid<Particle*> grid{ };
+    grid.SetSize( this->__width, this->__height, AFFECT_RANGE );
+    for( auto &particle : this->__particles ) {
+        grid.Add( &particle );
+    }
+
+    for( Uint32 i = 0; i < grid.GetSize( ); ++i ) {
+        std::vector<Particle*> &particles = grid.GetCell( i );
+
+        Uint8 count = 0;
+        Uint32 beginIndex = ( i + grid.GetSize( ) - 1 ) % grid.GetSize( );
+        Uint16 x = beginIndex % grid.GetColumn( );
+        beginIndex -= x;
+
+        std::vector<Particle*> *groups[ 9 ];
+        for( Uint8 j = 0; j < 3; ++j ) {
+            for( Uint8 k = 0; k < 3; ++k ) {
+                Uint32 index = beginIndex + ( ( x + k ) % grid.GetColumn( ) );
+                if( index < i )
+                    continue;
+                groups[ count++ ] = &grid.GetCell( index );
+            }
+            beginIndex = ( beginIndex + grid.GetColumn( ) ) % grid.GetSize( );
         }
 
-        for( std::size_t j = 0; j < group.GetParticles( ).size( ); j++ ) {
-            Particle &particle = group.GetParticles( )[ j ];
+        std::size_t particleCount = particles.size( );
+        while( particleCount-- ) {
+            Particle &particle = *particles[ particleCount ];
+            auto &properties = this->__properties[ particle.type ];
 
-            for( std::size_t k = i; k < this->__groups.size( ); k++ ) {
-                ParticleGroup &otherGroup = this->__groups[ k ];
+            particles.erase( particles.end( ) - 1 );
 
-                float interaction = group.GetInteractions( )[ k ],
-                      otherInteraction = otherGroup.GetInteractions( )[ i ];
+            for( Uint8 k = 0; k < count; ++k ) {
+                auto &otherParticles = *groups[ k ];                
+                for( auto otherParticleP : otherParticles ) {
+                    Particle &otherParticle = *otherParticleP;
 
-                for( std::size_t l = ( i + 1 ) * ( i == k ); l < otherGroup.GetParticles( ).size( ); l++ ) {
-                    Particle &otherParticle = otherGroup.GetParticles( )[ l ];
-                    float distX = otherParticle.position.x - particle.position.x,
-                          distY = otherParticle.position.y - particle.position.y;
+                    float dstX = otherParticle.position.GetX( ) - particle.position.GetX( ),
+                          dstY = otherParticle.position.GetY( ) - particle.position.GetY( );
+                    dstX -= ( this->__width * SDL_roundf( dstX / this->__width ) );
+                    dstY -= ( this->__height * SDL_roundf( dstY / this->__height ) );
+                    float dst = SDL_sqrtf( dstX * dstX + dstY * dstY );
 
-                    distX -= ( this->__width * SDL_roundf( distX / static_cast<float>( this->__width ) ) );
-                    distY -= ( this->__height * SDL_roundf( distY / static_cast<float>( this->__height ) ) );
-
-                    // {
-                    //     float absDistX = std::abs( distX ),
-                    //           absDistY = std::abs( distY );
-                    // 
-                    //     if( absDistX < halfWidth ) {
-                    //     } else if( absDistX > halfWidth ) {
-                    //         distX = ( this->__width - absDistX ) * ( -distX / absDistX );
-                    //     } else {
-                    //         distX = 0;
-                    //     }
-                    // 
-                    //     if( absDistY < halfHeight ) {
-                    //     } else if( absDistY > halfHeight ) {
-                    //         distY = ( this->__height - absDistY ) * ( -distY / absDistY );
-                    //     } else {
-                    //         distY = 0;
-                    //     }
-                    // 
-                    // }
-                    
-                    float dist = SDL_sqrtf( distX * distX + distY * distY );
-                    
-                    if( dist <= 5.f || dist > 75.f )
+                    if( dst <= 2.5f || dst > AFFECT_RANGE )
                         continue;
 
-                    float force = this->GetGravity( ) / ( dist * dist );
-                    float forceX = force * ( distX / dist ),
-                          forceY = force * ( distY / dist );
+                    float interaction = properties.interactions[ otherParticle.type ],
+                          otherInteraction = this->__properties[ otherParticle.type ].interactions[ particle.type ];
 
-                    // if( dist < group.GetAffectRange( ) ) {
-                        particle.velocity.x += ( forceX * interaction );
-                        particle.velocity.y += ( forceY * interaction );
-                    // }
-                    // if( dist < otherGroup.GetAffectRange( ) ) {
-                        otherParticle.velocity.x -= ( forceX * otherInteraction );
-                        otherParticle.velocity.y -= ( forceY * otherInteraction );
-                    // }
+                    float force = this->GetGravity( ) / ( dst * dst );
+                    float forceX = force * ( dstX / dst ),
+                          forceY = force * ( dstY / dst );
+
+                    particle.velocity.GetX( ) += ( forceX * interaction );
+                    particle.velocity.GetY( ) += ( forceY * interaction );
+
+                    otherParticle.velocity.GetX( ) -= ( forceX * otherInteraction );
+                    otherParticle.velocity.GetY( ) -= ( forceY * otherInteraction );
                 }
             }
 
-            float x = SDL_fmodf( particle.position.x + ( particle.velocity.x * delta ), this->__width ),
-                  y = SDL_fmodf( particle.position.y + ( particle.velocity.y * delta ), this->__height );
+            float x = SDL_fmodf( particle.position.GetX( ) + ( particle.velocity.GetX( ) * delta ), this->__width ),
+                  y = SDL_fmodf( particle.position.GetY( ) + ( particle.velocity.GetY( ) * delta ), this->__height );
 
-            particle.position.x = x < 0 ? x + this->__width : x;
-            particle.position.y = y < 0 ? y + this->__height : y;
+            particle.position.GetX( ) = x >= 0 ? x : ( x += this->__width ) != this->__width ? x : 0;
+            particle.position.GetY( ) = y >= 0 ? y : ( y += this->__height ) != this->__height ? y : 0;
 
-            // particle.velocity.x = 0;
-            // particle.velocity.y = 0;
-
-            // SDL_FRect rect = { particle.position.x, particle.position.y, 10.f, 10.f };
-            // SDL_RenderFillRect( renderer, &rect );
-            SDL_RenderPoint( renderer, particle.position.x, particle.position.y );
+            SDL_SetRenderDrawColorFloat( renderer, properties.color.r, properties.color.g, properties.color.b, properties.color.a );
+            SDL_RenderPoint( renderer, particle.position.GetX( ), particle.position.GetY( ) );
         }
     }
 }
 
 
 void Simulation::Reset( ) {
-    auto &group0 = this->__groups.emplace_back( );
-    group0.Reset( 0, { 1.f, 0, 0, 1.f }, 75.f, 5000, this->__width, this->__height, { -0.25f, 0.5f } );
+    this->__properties.clear( );
+    // this->__grid.SetSize( this->__width, this->__height, AFFECT_RANGE );
 
-    // auto &group1 = this->__groups.emplace_back( );
-    // group1.Reset( 1, { 0.f, 1.f, 0, 1.f }, 75.f, 100, this->__width, this->__height, { 0.25f, 0.25f } );
+    this->AddParticles( 10000, { .type = 0, .color = { 1.f, 0, 0, 1.f }, .affectRange = 75.f, .interactions = { -0.1f, 0.9f } } );
+
+    SDL_Log( "Simulation reset!" );
 }
 
 
-void Simulation::SetSize( std::size_t width, std::size_t height ) {
+void Simulation::Load( const char *filepath ) {
+    this->__particles.clear( );
+    this->__properties.clear( );
+
+    std::ifstream file( filepath );
+    nlohmann::json data;
+    if( !file.good( ) ) {
+        SDL_Log( "Failed to open file: %s", filepath );
+        data = {
+            {
+                "particle_types",
+                {
+                    {
+                        { "type", 0 },
+                        { "count", 1000 },
+                        { "color", { 1.f, 0, 0, 1.f } },
+                        { "affectRange", 75.f },
+                        { "interactions", { -0.1f, 0.9f, 0.f } }
+                    },
+                    {
+                        { "type", 1 },
+                        { "count", 1000 },
+                        { "color", { 0.f, 1.f, 0.f, 1.f } },
+                        { "affectRange", 75.f },
+                        { "interactions", { 0.1f, 0.9f, 0.f } }
+                    },
+                    {
+                        { "type", 2 },
+                        { "count", 1000 },
+                        { "color", { 0.f, 0.f, 1.f, 1.f } },
+                        { "affectRange", 75.f },
+                        { "interactions", { 0.f, 0.f, 0.f } }
+                    }
+                }
+            }
+        };
+        std::ofstream ofile( filepath );
+        ofile << data.dump( 4 );
+        ofile.close( );
+    } else {
+        data = nlohmann::json::parse( file );
+    }
+
+    nlohmann::json &particleTypes = data[ "particle_types" ];
+    for( auto &particleType : particleTypes ) {
+        auto &color = particleType[ "color" ];
+        this->AddParticles( particleType[ "count" ], {
+            .type = particleType[ "type" ],
+            .color = SDL_FColor{ color[ 0 ], color[ 1 ], color[ 2 ], color[ 3 ] },
+            .affectRange = particleType[ "affectRange" ],
+            .interactions = particleType[ "interactions" ]
+        } );
+    }
+
+    this->__particles.shrink_to_fit( );
+    this->__properties.shrink_to_fit( );
+}
+
+
+void Simulation::AddParticles( std::size_t count, const ParticleProperties &properties ) {
+    auto &newProps = this->__properties.emplace_back( properties );
+    newProps.count = count;
+
+    for( std::size_t i = 0; i < count; i++ ) {
+        // this->__grid.Add( Particle{ 
+        this->__particles.emplace_back( Particle {
+            .type = newProps.type,
+            .position = hin::Vector2f{ hin::Rand( ) * this->__width, hin::Rand( ) * this->__height }, 
+            .velocity = hin::Vector2f{ 0, 0 },
+        } );
+    }
+}
+
+
+void Simulation::SetSize( float width, float height ) {
     this->__width = width;
     this->__height = height;
 }

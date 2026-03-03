@@ -1,12 +1,16 @@
+#if 0
+
 #pragma once
 
-#include "core/particle.hpp"
-#include <SDL3/SDL_pixels.h>
-#include <SDL3/SDL_rect.h>
-#include <SDL3/SDL_stdinc.h>
 #include <cstddef>
 #include <initializer_list>
 #include <vector>
+
+#include <SDL3/SDL_pixels.h>
+#include <SDL3/SDL_rect.h>
+#include <SDL3/SDL_stdinc.h>
+
+#include "core/particle.hpp"
 
 
 class Simulation;
@@ -39,3 +43,5 @@ private:
     std::vector<Particle> __particles{ };
 
 };
+
+#endif

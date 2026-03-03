@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_init.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_render.h>
 
@@ -27,6 +28,10 @@ public:
 
     SDL_Renderer *GetRenderer( ) const;
 
+    void SetState( SDL_AppResult state );
+
+    SDL_AppResult GetState( );
+
 
 private:
 
@@ -36,6 +41,8 @@ private:
 
     SDL_Window *__window{ nullptr };
     SDL_Renderer *__renderer{ nullptr };
+
+    SDL_AppResult __state{ SDL_APP_CONTINUE };
 
     bool __isRunning{ false };
     hin::Clock __clock{ };

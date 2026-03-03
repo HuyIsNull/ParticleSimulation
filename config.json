@@ -1,0 +1,25 @@
+{
+    "particle_types": [
+        {
+            "type": 0,
+            "count": 5000,
+            "affectRange": 75.0,
+            "color": [ 1.0, 0, 0, 1.0 ],
+            "interactions": [ -0.3, 0.7, 0.3 ]
+        },
+        {
+            "type": 1,
+            "count": 0,
+            "affectRange": 75.0,
+            "color": [ 0, 1.0, 0, 1.0 ],
+            "interactions": [ 0.3, 0.7, 0.3 ]
+        },
+        {
+            "type": 2,
+            "count": 0,
+            "affectRange": 75.0,
+            "color": [ 0, 0, 1.0, 1.0 ],
+            "interactions": [ 0.3, 0.7, 0.1 ]
+        }
+    ]
+}
