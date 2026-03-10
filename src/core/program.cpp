@@ -5,6 +5,7 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_assert.h>
 #include <SDL3/SDL_video.h>
+#include <cstdlib>
 
 #include "core/program.hpp"
 
@@ -27,6 +28,7 @@ void Program::Init( ) {
     width = 800, height = 600;
     if( !SDL_CreateWindowAndRenderer( "Particle Simulation", width, height, SDL_WINDOW_FULLSCREEN, &instance.__window, &instance.__renderer ) ) {
         SDL_Log( "Create Window And Renderer Failed: %s", SDL_GetError( ) );
+        instance.SetState( SDL_APP_FAILURE );
     }
 
     {
@@ -56,8 +58,10 @@ void Program::Update( ) {
     SDL_RenderClear( this->__renderer );
 
     this->__clock.CheckPoint( );
-    this->__simulation.Update( 1.f );
-    SDL_Log( "fps: %f", this->__clock.GetFPS( ) );
+    this->__simulation.Update( 0.5f );
+    this->__clock.Update( );
+    SDL_Log( "fps: %f \naverage fps: %f", this->__clock.GetFPS( ), this->__clock.GetAverageFPS( ) );
+    SDL_Log( "" );
 
     SDL_RenderPresent( this->__renderer );
 
@@ -70,11 +74,16 @@ void Program::HandleEvent( const SDL_Event &event ) {
 
         case SDL_EVENT_QUIT:
             this->__isRunning = false;
+            this->__state = SDL_APP_SUCCESS;
             break;
     
 
         case SDL_EVENT_KEY_DOWN:
             if( event.key.key == SDLK_ESCAPE ) {
+                this->__isRunning = false;
+                this->SetState( SDL_APP_SUCCESS );
+            } else if( event.key.key == SDLK_R ) {
+                this->__clock.Reset( );
                 this->__simulation.Load( FILE_PATH );
             }
             break;
@@ -96,6 +105,8 @@ SDL_AppResult Program::GetState( ) {
 }
 
 void Program::SetState( SDL_AppResult state ) {
+    if( this->__state == SDL_APP_FAILURE )
+        return;
     this->__state = state;
 }
 

@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 
@@ -9,12 +10,12 @@
 #include <SDL3/SDL_stdinc.h>
 
 #include <nlohmann/json.hpp>
+#include <type_traits>
 
 #include "core/simulation.hpp"
 #include "core/particle.hpp"
 #include "core/particle_properties.hpp"
 #include "core/program.hpp"
-#include "ds/grid.hpp"
 #include "math/vector.hpp"
 #include "utilities/utils.hpp"
 
@@ -22,45 +23,60 @@
 static constexpr float AFFECT_RANGE = 75.f;
 
 
+inline static void SurroundIndices( std::uint32_t returnArray[ 9 ], std::uint32_t columns, std::uint32_t rows, std::uint32_t index ) {
+    std::int32_t x = index % columns,
+                 y = index / columns;
+
+    std::int32_t up = y - 1 > -1 ? y - 1 : rows - 1,
+                 down = y + 1 < static_cast<std::int32_t>( rows ) ? y + 1 : 0,
+                 left = x - 1 > -1 ? x - 1 : columns - 1,
+                 right = x + 1 < static_cast<std::int32_t>( columns ) ? x + 1 : 0;
+
+    returnArray[ 0 ] = up * columns + left;
+    returnArray[ 1 ] = up * columns + x;
+    returnArray[ 2 ] = up * columns + right;
+    returnArray[ 3 ] = y * columns + left;
+    returnArray[ 4 ] = y * columns + right;
+    returnArray[ 5 ] = down * columns + left;
+    returnArray[ 6 ] = down * columns + x;
+    returnArray[ 7 ] = down * columns + right;
+    returnArray[ 8 ] = index;
+}
+
+
 void Simulation::Update( float delta ) {
     SDL_Renderer *renderer = Program::GetInstance( ).GetRenderer( );
 
-    hin::Grid<Particle*> grid{ };
-    grid.SetSize( this->__width, this->__height, AFFECT_RANGE );
-    for( auto &particle : this->__particles ) {
-        grid.Add( &particle );
-    }
+    this->__grid.Update( );
 
-    for( Uint32 i = 0; i < grid.GetSize( ); ++i ) {
-        std::vector<Particle*> &particles = grid.GetCell( i );
+    const auto &cells = this->__grid.GetCells( );
+    for( std::size_t i = 0; i < cells.size( ); ++i ) {
+        auto &cell = cells[ i ];
 
+        std::uint32_t indices[ 9 ];
+        SurroundIndices( indices, this->__grid.GetColumn( ), this->__grid.GetRow( ), i );
+
+        std::remove_reference_t<decltype( cells[ 0 ] )> *groups[ 8 ];
         Uint8 count = 0;
-        Uint32 beginIndex = ( i + grid.GetSize( ) - 1 ) % grid.GetSize( );
-        Uint16 x = beginIndex % grid.GetColumn( );
-        beginIndex -= x;
-
-        std::vector<Particle*> *groups[ 9 ];
-        for( Uint8 j = 0; j < 3; ++j ) {
-            for( Uint8 k = 0; k < 3; ++k ) {
-                Uint32 index = beginIndex + ( ( x + k ) % grid.GetColumn( ) );
-                if( index < i )
-                    continue;
-                groups[ count++ ] = &grid.GetCell( index );
-            }
-            beginIndex = ( beginIndex + grid.GetColumn( ) ) % grid.GetSize( );
+        for( Uint8 j = 0; j < 8; ++j ) {
+            if( indices[ j ] < i )
+                continue;
+            groups[ count++ ] = &cells[ indices[ j ] ];
         }
 
-        std::size_t particleCount = particles.size( );
-        while( particleCount-- ) {
-            Particle &particle = *particles[ particleCount ];
+        std::size_t index = cell.first,
+                    size = cell.second;
+
+        while( size-- ) {
+            Particle &particle = this->__grid.GetDatas( )[ index++ ]; 
             auto &properties = this->__properties[ particle.type ];
 
-            particles.erase( particles.end( ) - 1 );
-
-            for( Uint8 k = 0; k < count; ++k ) {
-                auto &otherParticles = *groups[ k ];                
-                for( auto otherParticleP : otherParticles ) {
-                    Particle &otherParticle = *otherParticleP;
+            {
+                std::size_t jndex = index,
+                            jsize = cell.second - ( jndex - cell.first );
+                
+                while( jsize-- ) {
+                    Particle &otherParticle = this->__grid.GetDatas( )[ jndex++ ];
 
                     float dstX = otherParticle.position.GetX( ) - particle.position.GetX( ),
                           dstY = otherParticle.position.GetY( ) - particle.position.GetY( );
@@ -68,15 +84,48 @@ void Simulation::Update( float delta ) {
                     dstY -= ( this->__height * SDL_roundf( dstY / this->__height ) );
                     float dst = SDL_sqrtf( dstX * dstX + dstY * dstY );
 
-                    if( dst <= 2.5f || dst > AFFECT_RANGE )
+                    if( dst <= 0.f || dst > AFFECT_RANGE )
                         continue;
 
                     float interaction = properties.interactions[ otherParticle.type ],
                           otherInteraction = this->__properties[ otherParticle.type ].interactions[ particle.type ];
 
                     float force = this->GetGravity( ) / ( dst * dst );
-                    float forceX = force * ( dstX / dst ),
-                          forceY = force * ( dstY / dst );
+                    float forceX = force * dstX,
+                          forceY = force * dstY;
+
+                    particle.velocity.GetX( ) += ( forceX * interaction );
+                    particle.velocity.GetY( ) += ( forceY * interaction );
+
+                    otherParticle.velocity.GetX( ) -= ( forceX * otherInteraction );
+                    otherParticle.velocity.GetY( ) -= ( forceY * otherInteraction );
+                }
+            }
+
+            for( Uint8 j = 0; j < count; ++j ) {
+                auto &otherCell = *groups[ j ];
+
+                std::size_t jndex = otherCell.first,
+                            jsize = otherCell.second;
+                
+                while( jsize-- ) {
+                    Particle &otherParticle = this->__grid.GetDatas( )[ jndex++ ];
+
+                    float dstX = otherParticle.position.GetX( ) - particle.position.GetX( ),
+                          dstY = otherParticle.position.GetY( ) - particle.position.GetY( );
+                    dstX -= ( this->__width * SDL_roundf( dstX / this->__width ) );
+                    dstY -= ( this->__height * SDL_roundf( dstY / this->__height ) );
+                    float dst = SDL_sqrtf( dstX * dstX + dstY * dstY );
+
+                    if( dst <= 0.f || dst > AFFECT_RANGE )
+                        continue;
+
+                    float interaction = properties.interactions[ otherParticle.type ],
+                          otherInteraction = this->__properties[ otherParticle.type ].interactions[ particle.type ];
+
+                    float force = this->GetGravity( ) / ( dst * dst );
+                    float forceX = force * dstX,
+                          forceY = force * dstY;
 
                     particle.velocity.GetX( ) += ( forceX * interaction );
                     particle.velocity.GetY( ) += ( forceY * interaction );
@@ -99,19 +148,8 @@ void Simulation::Update( float delta ) {
 }
 
 
-void Simulation::Reset( ) {
-    this->__properties.clear( );
-    // this->__grid.SetSize( this->__width, this->__height, AFFECT_RANGE );
-
-    this->AddParticles( 10000, { .type = 0, .color = { 1.f, 0, 0, 1.f }, .affectRange = 75.f, .interactions = { -0.1f, 0.9f } } );
-
-    SDL_Log( "Simulation reset!" );
-}
-
-
 void Simulation::Load( const char *filepath ) {
-    this->__particles.clear( );
-    this->__properties.clear( );
+    this->Clear( );
 
     std::ifstream file( filepath );
     nlohmann::json data;
@@ -153,6 +191,15 @@ void Simulation::Load( const char *filepath ) {
     }
 
     nlohmann::json &particleTypes = data[ "particle_types" ];
+
+    std::size_t totalCount = 0;
+    for( auto &particleType : particleTypes ) {
+        totalCount += particleType[ "count" ].get<std::size_t>( );
+    }
+
+    this->__grid.SetSize( this->__width, this->__height, AFFECT_RANGE );
+    this->__grid.ReserveElementCount( totalCount );
+
     for( auto &particleType : particleTypes ) {
         auto &color = particleType[ "color" ];
         this->AddParticles( particleType[ "count" ], {
@@ -163,7 +210,6 @@ void Simulation::Load( const char *filepath ) {
         } );
     }
 
-    this->__particles.shrink_to_fit( );
     this->__properties.shrink_to_fit( );
 }
 
@@ -173,13 +219,18 @@ void Simulation::AddParticles( std::size_t count, const ParticleProperties &prop
     newProps.count = count;
 
     for( std::size_t i = 0; i < count; i++ ) {
-        // this->__grid.Add( Particle{ 
-        this->__particles.emplace_back( Particle {
+        this->__grid.Add( Particle {
             .type = newProps.type,
             .position = hin::Vector2f{ hin::Rand( ) * this->__width, hin::Rand( ) * this->__height }, 
             .velocity = hin::Vector2f{ 0, 0 },
         } );
     }
+}
+
+
+void Simulation::Clear( ) {
+    this->__grid.Clear( );
+    this->__properties.clear( );
 }
 
 
@@ -192,4 +243,3 @@ void Simulation::SetSize( float width, float height ) {
 float Simulation::GetGravity( ) const {
     return this->__gravity;
 }
-

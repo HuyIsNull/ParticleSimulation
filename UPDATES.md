@@ -1,23 +1,9 @@
-# Performance Improvements.
+# Memory Fix 
 
 
-## Added
+Previously, I mentioned about the program's memory usage problem.
+It was because of Grid. I realized that freed memory wouldn't return to the OS right away, but be kept by the program for future uses.
+It's helpful when you allocate memory for every frame( If you idiotic enough to do that ), but at the same time, because of Grid memory hungry, the program's memory usage would increase.
 
-
-* **Grid data structure( Spatial Hashing )**: Which is basically 2d dynamic array.
-By separating regions of particles, this helped decrease numbers of check on particles that are too far away.
-You may ask why i don't use quadtree, well, my pea brain is not that smart.
-
-    * **The Downsides**: With only 5000 particles and 350 std::vectors on my fullscreen, the program memory usage can go up to 500MB, which to me, is really bad. 
-
-<br>
-
-* **Configuration**: You can now add other particle types and change the number of particles in config.json file.
-
-> [!WARNING]
-> There are no safe format checks for config.json, so if something goes wrong, the program will crash.
-
-
-## Changed
-
-* Overengineered hin::Vector. 
+Now instead of 2D array of std::vector, I used 1D array represent a 2D grid and sort it by grid index.
+It would be a little bit slower, but the program's memory usage would be stable.

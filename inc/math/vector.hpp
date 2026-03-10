@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <initializer_list>
 
 
@@ -93,6 +94,11 @@ namespace hin {
             return this->Applier( [ scalar ]( std::size_t index, T component ) { 
                 return component * scalar;
             } );
+        }
+
+
+        Vector &Reset( ) {
+            std::memset( this->components, 0, sizeof( this->components ) );
         }
 
 

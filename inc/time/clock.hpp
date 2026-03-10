@@ -12,17 +12,22 @@ namespace hin {
         Clock( );
 
         void Update( );
-
         void CheckPoint( );
-        
-        double GetDeltaTime( Uint32 fps );
+        void Reset( );
 
-        float GetFPS( );
+        double GetFPS( ) const;
+
+        double GetAverageFPS( ) const;
+        double GetDeltaTime( ) const;
 
 
     private:
     
-        Uint32 __lastTicks{ };
+        Uint32 __lastTicks{ 0 };
+        Uint64 __count{ 0 };
+        double __fps{ 0 },
+               __averageFPS{ 0 },
+               __deltaTime{ 0 };
 
     };
 

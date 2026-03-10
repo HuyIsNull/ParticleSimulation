@@ -6,37 +6,46 @@
 
 namespace hin {
 
-    Clock::Clock( ) {
-        this->Update( );
-    }
-
-
-    void Clock::Update( ) {
-        this->__lastTicks = SDL_GetTicks( );
+    Clock::Clock( ) : __lastTicks( SDL_GetTicks( ) ) {
     }
 
 
     void Clock::CheckPoint( ) {
         this->__lastTicks = SDL_GetTicks( );
+        ++this->__count;
     }
 
 
-    double Clock::GetDeltaTime( Uint32 fps ) {
-        Uint32 ticks = 1000 / fps;
+    void Clock::Update( ) {
         Uint32 tickSpan = SDL_GetTicks( ) - this->__lastTicks;
-        if( tickSpan < ticks ) {
-            SDL_Delay( ticks - tickSpan );
-        } else {
-            ticks = tickSpan;
-        }
-
-        return static_cast<double>( ticks ) / 1000.0f;
+        // Uint32 ticks = 0;
+        // if( tickSpan < ticks ) {
+        //     SDL_Delay( ticks - tickSpan );
+        // }
+        this->__fps = 1000.f / static_cast<double>( tickSpan );
+        this->__averageFPS = this->__averageFPS + ( this->__fps - this->__averageFPS ) /  static_cast<double>( this->__count );
+        this->__deltaTime = static_cast<double>( tickSpan ) / 1000.0f;
     }
 
 
-    float Clock::GetFPS( ) {
-        Uint32 ticks = SDL_GetTicks( ) - this->__lastTicks;
-        return 1000.f / static_cast<float>( ticks ); 
+    void Clock::Reset( ) {
+        this->__averageFPS = 0;
+        this->__count = 0;
     }
+
+
+    double Clock::GetFPS( ) const {
+        return this->__fps;
+    }
+
+
+    double Clock::GetAverageFPS( ) const {
+        return this->__averageFPS;
+    }
+
+    double Clock::GetDeltaTime( ) const {
+        return this->__deltaTime;
+    }
+
 
 }
