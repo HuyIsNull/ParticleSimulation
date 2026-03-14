@@ -26,7 +26,11 @@ public:
 
     bool IsRunning( ) const;
 
+    SDL_Window *GetWindow( ) const;
+
     SDL_Renderer *GetRenderer( ) const;
+
+    void SetBackground( const SDL_FColor &color );
 
     void SetState( SDL_AppResult state );
 
@@ -41,6 +45,8 @@ private:
 
     SDL_Window *__window{ nullptr };
     SDL_Renderer *__renderer{ nullptr };
+
+    SDL_FColor __background{ 0.f, 0.f, 0.f, 0.f };
 
     SDL_AppResult __state{ SDL_APP_CONTINUE };
 

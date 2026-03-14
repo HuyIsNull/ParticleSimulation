@@ -1,3 +1,4 @@
+#include <SDL3/SDL_video.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -18,9 +19,6 @@
 #include "core/program.hpp"
 #include "math/vector.hpp"
 #include "utilities/utils.hpp"
-
-
-static constexpr float AFFECT_RANGE = 75.f;
 
 
 inline static void SurroundIndices( std::uint32_t returnArray[ 9 ], std::uint32_t columns, std::uint32_t rows, std::uint32_t index ) {
@@ -49,6 +47,12 @@ void Simulation::Update( float delta ) {
 
     this->__grid.Update( );
 
+    float halfWidth = this->__width / 2.f,
+          halfHeight = this->__height / 2.f;
+
+    float squaredMaxDst = this->__maxAffectRange * this->__maxAffectRange,
+          squaredMinDst = this->__minAffectRange * this->__minAffectRange;
+
     const auto &cells = this->__grid.GetCells( );
     for( std::size_t i = 0; i < cells.size( ); ++i ) {
         auto &cell = cells[ i ];
@@ -59,7 +63,7 @@ void Simulation::Update( float delta ) {
         std::remove_reference_t<decltype( cells[ 0 ] )> *groups[ 8 ];
         Uint8 count = 0;
         for( Uint8 j = 0; j < 8; ++j ) {
-            if( indices[ j ] < i )
+            if( indices[ j ] <= i )
                 continue;
             groups[ count++ ] = &cells[ indices[ j ] ];
         }
@@ -80,17 +84,17 @@ void Simulation::Update( float delta ) {
 
                     float dstX = otherParticle.position.GetX( ) - particle.position.GetX( ),
                           dstY = otherParticle.position.GetY( ) - particle.position.GetY( );
-                    dstX -= ( this->__width * SDL_roundf( dstX / this->__width ) );
-                    dstY -= ( this->__height * SDL_roundf( dstY / this->__height ) );
-                    float dst = SDL_sqrtf( dstX * dstX + dstY * dstY );
+                    dstX -= ( this->__width * ( dstX > halfWidth ) );
+                    dstY -= ( this->__height * ( dstY > halfHeight ) );
 
-                    if( dst <= 0.f || dst > AFFECT_RANGE )
+                    float squaredDst = dstX * dstX + dstY * dstY;
+                    if( squaredDst <= squaredMinDst || squaredDst > squaredMaxDst )
                         continue;
 
                     float interaction = properties.interactions[ otherParticle.type ],
                           otherInteraction = this->__properties[ otherParticle.type ].interactions[ particle.type ];
 
-                    float force = this->GetGravity( ) / ( dst * dst );
+                    float force = this->GetGravity( ) / squaredDst;
                     float forceX = force * dstX,
                           forceY = force * dstY;
 
@@ -113,17 +117,17 @@ void Simulation::Update( float delta ) {
 
                     float dstX = otherParticle.position.GetX( ) - particle.position.GetX( ),
                           dstY = otherParticle.position.GetY( ) - particle.position.GetY( );
-                    dstX -= ( this->__width * SDL_roundf( dstX / this->__width ) );
-                    dstY -= ( this->__height * SDL_roundf( dstY / this->__height ) );
-                    float dst = SDL_sqrtf( dstX * dstX + dstY * dstY );
+                    dstX -= ( this->__width * ( dstX > halfWidth ) );
+                    dstY -= ( this->__height * ( dstY > halfHeight ) );
 
-                    if( dst <= 0.f || dst > AFFECT_RANGE )
+                    float squaredDst = dstX * dstX + dstY * dstY;
+                    if( squaredDst <= squaredMinDst || squaredDst > squaredMaxDst )
                         continue;
 
                     float interaction = properties.interactions[ otherParticle.type ],
                           otherInteraction = this->__properties[ otherParticle.type ].interactions[ particle.type ];
 
-                    float force = this->GetGravity( ) / ( dst * dst );
+                    float force = this->GetGravity( ) / squaredDst;
                     float forceX = force * dstX,
                           forceY = force * dstY;
 
@@ -134,6 +138,9 @@ void Simulation::Update( float delta ) {
                     otherParticle.velocity.GetY( ) -= ( forceY * otherInteraction );
                 }
             }
+
+            particle.velocity.GetX( ) *= this->GetDamping( );
+            particle.velocity.GetY( ) *= this->GetDamping( );
 
             float x = SDL_fmodf( particle.position.GetX( ) + ( particle.velocity.GetX( ) * delta ), this->__width ),
                   y = SDL_fmodf( particle.position.GetY( ) + ( particle.velocity.GetY( ) * delta ), this->__height );
@@ -152,60 +159,97 @@ void Simulation::Load( const char *filepath ) {
     this->Clear( );
 
     std::ifstream file( filepath );
-    nlohmann::json data;
+    nlohmann::json configs;
     if( !file.good( ) ) {
         SDL_Log( "Failed to open file: %s", filepath );
-        data = {
+        
+        // Default configs
+        nlohmann::ordered_json defaultConfigs = {
             {
-                "particle_types",
+                "world",
                 {
+                    { "Fullscreen", true },
+                    { "width", 800 },
+                    { "height", 600 },
+                    { "background", { 0.f, 0.f, 0.f, 0.f } },
+                    { "gravity", 1.f },
+                    { "damping", 1.f }
+                }
+            },
+            {
+                "particles",
+                {
+                    { "affectRange", { 2.5f, 75.f } },
                     {
-                        { "type", 0 },
-                        { "count", 1000 },
-                        { "color", { 1.f, 0, 0, 1.f } },
-                        { "affectRange", 75.f },
-                        { "interactions", { -0.1f, 0.9f, 0.f } }
-                    },
-                    {
-                        { "type", 1 },
-                        { "count", 1000 },
-                        { "color", { 0.f, 1.f, 0.f, 1.f } },
-                        { "affectRange", 75.f },
-                        { "interactions", { 0.1f, 0.9f, 0.f } }
-                    },
-                    {
-                        { "type", 2 },
-                        { "count", 1000 },
-                        { "color", { 0.f, 0.f, 1.f, 1.f } },
-                        { "affectRange", 75.f },
-                        { "interactions", { 0.f, 0.f, 0.f } }
+                        "types",
+                        {
+                            {
+                                { "count", 1000 },
+                                { "color", { 1.f, 1.f, 1.f, 1.f } },
+                                { "interactions", { 1.f, 1.f, 1.f, 1.f } }
+                            }
+                        }
                     }
                 }
             }
         };
+
         std::ofstream ofile( filepath );
-        ofile << data.dump( 4 );
+        ofile << defaultConfigs.dump( 4 );
         ofile.close( );
+        configs = defaultConfigs;
     } else {
-        data = nlohmann::json::parse( file );
+        configs = nlohmann::json::parse( file );
     }
 
-    nlohmann::json &particleTypes = data[ "particle_types" ];
 
+    nlohmann::json &world = configs[ "world" ];
+    nlohmann::json &particles = configs[ "particles" ];
+
+    {
+        nlohmann::json &affectRanges = particles[ "affectRange" ];
+        this->SetAffectRange( affectRanges[ 0 ].get<float>( ), affectRanges[ 1 ].get<float>( ) );
+    }
+
+    if( world[ "Fullscreen" ].get<bool>( ) ) {
+
+        SDL_DisplayID displayID = SDL_GetDisplayForWindow( Program::GetInstance( ).GetWindow( ) ); 
+        SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes( displayID, NULL );
+        SDL_DisplayMode *mode = modes[ 0 ];
+
+        this->SetSize( mode->w, mode->h );
+
+        SDL_free( modes );
+    } else {
+        this->SetSize( world[ "width" ].get<float>( ), world[ "height" ].get<float>( ) );
+    }
+
+
+    // Set gravity, viscosity and background color
+    this->SetGravity( world[ "gravity" ].get<float>( ) );
+    this->SetDamping( world[ "damping" ].get<float>( ) );
+    {
+        nlohmann::json &background = world[ "background" ];
+        Program::GetInstance( ).SetBackground( SDL_FColor{ background[ 0 ], background[ 1 ], background[ 2 ], background[ 3 ] } );
+    }
+
+
+    // Load particle types
+    nlohmann::json &particleTypes = particles[ "types" ];
     std::size_t totalCount = 0;
     for( auto &particleType : particleTypes ) {
         totalCount += particleType[ "count" ].get<std::size_t>( );
     }
 
-    this->__grid.SetSize( this->__width, this->__height, AFFECT_RANGE );
     this->__grid.ReserveElementCount( totalCount );
 
-    for( auto &particleType : particleTypes ) {
+    for( Uint8 i = 0; i < particleTypes.size( ); i++ ) {
+        auto &particleType = particleTypes[ i ];
         auto &color = particleType[ "color" ];
-        this->AddParticles( particleType[ "count" ], {
-            .type = particleType[ "type" ],
+
+        this->AddParticles( particleType[ "count" ].get<std::size_t>( ), {
+            .type = i,
             .color = SDL_FColor{ color[ 0 ], color[ 1 ], color[ 2 ], color[ 3 ] },
-            .affectRange = particleType[ "affectRange" ],
             .interactions = particleType[ "interactions" ]
         } );
     }
@@ -228,6 +272,12 @@ void Simulation::AddParticles( std::size_t count, const ParticleProperties &prop
 }
 
 
+void Simulation::SetAffectRange( float min, float max ) {
+    this->__minAffectRange = min;
+    this->__maxAffectRange = max;
+}
+
+
 void Simulation::Clear( ) {
     this->__grid.Clear( );
     this->__properties.clear( );
@@ -237,9 +287,23 @@ void Simulation::Clear( ) {
 void Simulation::SetSize( float width, float height ) {
     this->__width = width;
     this->__height = height;
+    this->__grid.SetSize( width, height, this->__maxAffectRange );
 }
 
 
 float Simulation::GetGravity( ) const {
     return this->__gravity;
+}
+
+void Simulation::SetGravity( float gravity ) {
+    this->__gravity = gravity;
+}
+
+
+float Simulation::GetDamping( ) const {
+    return this->__viscosity;
+}
+
+void Simulation::SetDamping( float viscosity ) {
+    this->__viscosity = viscosity;
 }

@@ -12,15 +12,23 @@ Judge my English.
 
 ``` Bash
 cd ParticleSimulation
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
+
+For maximum performance, add:
+
+```
+-DCMAKE_CXX_FLAGS="-O3 -march=native -flto"
+```
+
+If you don't have require packages by default, you can add:
 
 
 ## Run
 
 ``` Bash
-./build/ParticleSimulation
+./build/Particle
 ```
 
 
@@ -28,10 +36,11 @@ cmake --build build
 
 You can change number of particles in config.json. If the file doesn't exist, the program will create a default one.
 
+> [!WARNING]
+> Currently, there are no safe load on wrong configuration, the program will crash.
 
 
 ## Controls
 
-* `Escape` - Reload( Don't ask why ).
-
-That's it. More controls will be added in the future.
+* `Escape` - Quit.
+* `R` - Reload.
